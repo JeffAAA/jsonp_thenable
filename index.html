@@ -1,0 +1,84 @@
+<script>
+    const defaultConfig = {
+        timeout: 5000,
+        callbackName: 'callback',
+        callbackNameFunction: null
+    }
+
+    function generatorFunctionName() {
+        return `_jsonp_${Math.floor(Math.random() * 100000)}_${Date.now()}`
+    }
+
+    function splitUrl(url, callbackName, callbackNameFunction) {
+        url = url.indexOf('?') === -1 ? url + '?' : url;
+        return `${url}${callbackName}=${callbackNameFunction}`
+    }
+
+    function removeJsonpCallback(callbackNameFunction) {
+        delete window[callbackNameFunction]
+    }
+
+    function generatorScript(url, id) {
+        let script = document.createElement('script');
+        script.setAttribute('src', url);
+        script.setAttribute('id', id);
+        return script
+    }
+
+    function removeScript(id) {
+        let script = document.querySelector(`#${id}`);
+        if (script) {
+            document.getElementsByTagName('head')[0].removeChild(script);
+        }
+    }
+
+    function fetchJsonp(url, config = {}) {
+        let { callbackName, callbackNameFunction, timeout } = config;
+        callbackName = callbackName || defaultConfig.callbackName;
+        callbackNameFunction = defaultConfig.callbackNameFunction || generatorFunctionName();
+        timeout = timeout || defaultConfig.timeout;
+        let scriptId = `${callbackName}_${callbackNameFunction}`;
+        url = splitUrl(url, callbackName, callbackNameFunction);
+        let script = generatorScript(url, scriptId);
+        return new Promise((resolve, reject) => {
+            window[callbackNameFunction] = res => {
+                resolve(res);
+                removeScript(scriptId);
+                removeJsonpCallback(callbackNameFunction);
+            };
+            document.getElementsByTagName('head')[0].appendChild(script);
+
+            let timer = setTimeout(() => {
+                reject(new Error('timeout err'));
+                removeScript(scriptId);
+                removeJsonpCallback(callbackNameFunction);
+                clearTimeout(timer);
+            }, timeout)
+
+            script.onerror = err => {
+                reject(new Error('script err'));
+                removeScript(scriptId);
+                removeJsonpCallback(callbackNameFunction);
+                timer && clearTimeout(timer);
+            }
+        })
+    }
+
+    let local;
+    if (typeof global !== 'undefined') {
+        local = global;
+    } else if (typeof self !== 'undefined') {
+        local = self;
+    } else {
+        try {
+            local = Function('return this')();
+        } catch (e) {
+            throw new Error('polyfill failed because global object is unavailable in this environment');
+        }
+    }
+    local.fetchJsonp = fetchJsonp;
+
+    fetchJsonp('http://localhost:8888/').then(data => {
+        console.log(data);
+    })
+</script>
